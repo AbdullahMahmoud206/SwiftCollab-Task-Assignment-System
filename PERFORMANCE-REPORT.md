@@ -24,44 +24,44 @@ after an individual task failure.
 
 ## Annotated Code Excerpts
 
-### AVL tree encapsulation
+### Task 1: AVL tree optimization
 
-From `AVLTree/README.md`:
+From `AVLTree/AVLTree.cs`:
 
 ```csharp
-public Node Root { get; private set; }
+public Node Root { get; private set; } = null!;
 ```
 
-`private set` prevents callers from replacing the tree root directly. This
+`private set` prevents callers from replacing the tree root directly, which
 protects the balance invariants maintained by AVL insertion and rotations.
-
-### Cached node height
-
-From `AVLTree/README.md`:
 
 ```csharp
 public int Height { get; set; }
 ```
 
-The cached height lets balance calculations use stored metadata instead of
-recomputing subtree heights recursively after every operation. The property
-must be updated whenever a node's children change.
-
-### Iterative search
-
-From `AVLTree/README.md`:
+Each node caches its height so balance calculations can read subtree metadata
+in `O(1)` time instead of recursively recomputing heights after every update.
 
 ```csharp
 public bool Search(int value)
+{
+    Node current = Root;
+
+    while (current != null)
+    {
+        if (value == current.Value)
+            return true;
+
+        current = value < current.Value ? current.Left : current.Right;
+    }
+
+    return false;
+}
 ```
 
-The documented search API follows the tree ordering and avoids traversing
-unrelated branches. In a balanced AVL tree, the README reports `O(log n)`
-search time and reduced call-stack usage compared with recursive search.
-
-### Duplicate prevention
-
-From `AVLTree/README.md`:
+The iterative search follows BST ordering, avoids unrelated branches, and
+reduces recursion overhead. With AVL balancing, the documented search
+complexity is `O(log n)`.
 
 ```csharp
 else
@@ -71,19 +71,130 @@ else
 ```
 
 Returning the existing node for a duplicate avoids unnecessary allocation and
-keeps duplicate priorities from increasing the tree size.
+prevents duplicate priorities from increasing the tree size.
 
-### Reusable traversal
+### Task 2: Priority queue optimization
 
-From `AVLTree/README.md`:
+From `PriorityQueue/PriorityQueue.cs`:
 
 ```csharp
-IEnumerable<int>
+private readonly List<ApiRequest> _heap = new();
 ```
 
-Returning an enumerable separates traversal from console output. Consumers can
-iterate, test, or compose the results without coupling the data structure to a
-specific presentation method.
+The list is used as the backing array for a binary min-heap, so the smallest
+priority remains at index `0` without sorting the entire collection.
+
+```csharp
+_heap.Add(request);
+HeapifyUp(_heap.Count - 1);
+```
+
+Appending and restoring the heap property requires `O(log n)` work, improving
+on sorting the complete list after each enqueue.
+
+```csharp
+ApiRequest root = _heap[0];
+_heap[0] = _heap[^1];
+_heap.RemoveAt(_heap.Count - 1);
+HeapifyDown(0);
+```
+
+Dequeue removes the minimum-priority request and restores heap order in
+`O(log n)` time instead of shifting every remaining list element.
+
+```csharp
+lock (_lock)
+{
+    return _heap.Count > 0 ? _heap[0] : null;
+}
+```
+
+Locking protects concurrent queue access, while `Peek` permits inspection
+without removing the next request.
+
+### Task 3: Sorting algorithm optimization
+
+From `AlgorithmAnalisys/Sorting.cs`:
+
+```csharp
+public static void QuickSort(int[] arr, int low, int high)
+{
+    if (low < high)
+    {
+        int pivotIndex = Partition(arr, low, high);
+
+        QuickSort(arr, low, pivotIndex - 1);
+        QuickSort(arr, pivotIndex + 1, high);
+    }
+}
+```
+
+Quick Sort partitions the input in place and recursively sorts the two
+subranges. Its documented average-case complexity is `O(n log n)`, compared
+with Bubble Sort's `O(n²)`.
+
+```csharp
+(arr[i], arr[j]) = (arr[j], arr[i]);
+```
+
+In-place swaps avoid a second array and keep additional memory usage low.
+
+```csharp
+Parallel.Invoke(
+    () => ParallelQuickSort(arr, low, pivotIndex - 1),
+    () => ParallelQuickSort(arr, pivotIndex + 1, high)
+);
+```
+
+The parallel variant can process independent partitions concurrently for very
+large datasets, although the README notes that parallel overhead may not
+benefit smaller inputs.
+
+### Task 4: Task execution debugging and error handling
+
+From `TaskExecutor/TaskExecutor.cs`:
+
+```csharp
+if (string.IsNullOrWhiteSpace(task))
+{
+    LogError("Attempted to add a null or empty task.");
+    return;
+}
+```
+
+Validation prevents invalid tasks from entering the queue and reports the
+rejected input through the centralized logging path.
+
+```csharp
+while (!completed && attempts <= MaxRetries)
+{
+    try
+    {
+        attempts++;
+        ExecuteTask(task);
+        completed = true;
+    }
+    catch (Exception ex)
+    {
+        LogError(
+            $"Task '{task}' failed on attempt {attempts}. Error: {ex.Message}");
+    }
+}
+```
+
+Structured exception handling retries transient failures while keeping the
+outer queue-processing loop alive, so one failed task does not stop later
+tasks from being attempted.
+
+```csharp
+if (task.Contains("Fail", StringComparison.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException("Task execution failed.");
+}
+```
+
+The specific exception type makes the simulated execution failure clearer to
+diagnose than a generic exception.
 
 ## Complexity Summary
 
